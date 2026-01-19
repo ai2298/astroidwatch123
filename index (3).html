@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NASA Asteroid Tracker - Live Telemetry</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #050505;
+            color: #e2e8f0;
+            overflow-x: hidden;
+        }
+
+        .mono { font-family: 'JetBrains+Mono', monospace; }
+
+        @keyframes radar-sweep {
+            from { transform: rotate(0deg) translateY(-50%); }
+            to { transform: rotate(360deg) translateY(-50%); }
+        }
+
+        .radar-sweep-line {
+            animation: radar-sweep 4s linear infinite;
+            transform-origin: left;
+        }
+
+        .glow-cyan { box-shadow: 0 0 20px rgba(6, 182, 212, 0.2); }
+        .glow-red { box-shadow: 0 0 40px rgba(239, 68, 68, 0.2); }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="min-h-screen relative selection:bg-cyan-500/30">
+
+    <!-- Background Ambience -->
+    <div class="fixed inset-0 pointer-events-none opacity-30">
+        <div class="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,#1e1b4b_0%,transparent_70%)]"></div>
+    </div>
+
+    <!-- Start/Landing Screen -->
+    <div id="start-screen" class="fixed inset-0 z-[60] bg-black flex flex-col items-center justify-center p-6 text-center">
+        <div class="max-w-xl w-full">
+            <div class="flex items-center justify-center gap-2 text-cyan-500 mb-4">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                <span class="text-sm font-bold tracking-[0.4em] uppercase">Orbital Defense Command</span>
+            </div>
+            <h1 class="text-5xl md:text-7xl font-black tracking-tighter text-white italic mb-8">
+                ASTEROID<span class="text-cyan-500">WATCH</span>
+            </h1>
+            <p class="text-slate-400 mb-10 mono text-sm leading-relaxed max-w-md mx-auto">
+                Accessing NASA Near-Earth Object (NEO) data feeds. Monitoring deep space sectors for potential planetary threats.
+            </p>
+            <button onclick="startMission()" class="group relative px-12 py-4 bg-transparent border border-cyan-500/50 text-cyan-400 rounded-full font-bold overflow-hidden transition-all hover:bg-cyan-500 hover:text-white hover:glow-cyan">
+                <span class="relative z-10 uppercase tracking-widest text-sm">Initiate Tracking</span>
+                <div class="absolute inset-0 bg-cyan-500 transform translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+            </button>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loading-screen" class="hidden fixed inset-0 z-50 bg-black flex flex-col items-center justify-center text-cyan-400">
+        <svg class="w-12 h-12 animate-spin mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 11-6.219-8.56" stroke-linecap="round"></path>
+        </svg>
+        <p class="mono tracking-widest animate-pulse uppercase text-sm">Establishing Uplink to NASA...</p>
+    </div>
+
+    <!-- Error State -->
+    <div id="error-screen" class="hidden fixed inset-0 z-50 bg-gray-900 flex items-center justify-center p-6 text-center">
+        <div class="max-w-md w-full bg-black/50 border border-red-500/50 p-8 rounded-3xl backdrop-blur-xl">
+            <div class="text-red-500 mb-4 flex justify-center">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </div>
+            <h2 class="text-2xl font-bold text-white mb-2 italic">Scan Interrupted</h2>
+            <p id="error-message" class="text-gray-400 mb-6 text-sm"></p>
+            <button onclick="location.reload()" class="w-full py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold transition-all uppercase tracking-widest text-xs">
+                Re-initiate Deep Space Scan
+            </button>
+        </div>
+    </div>
+
+    <div class="relative z-10 max-w-6xl mx-auto px-4 py-8 md:py-12">
+        <header class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+            <div>
+                <div class="flex items-center gap-2 text-cyan-500 mb-2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    <span class="text-xs font-bold tracking-[0.3em] uppercase">Real-Time Telemetry</span>
+                </div>
+                <h1 class="text-4xl md:text-6xl font-black tracking-tight text-white italic">
+                    ASTEROID<span class="text-cyan-500">WATCH</span>
+                </h1>
+            </div>
+            <div class="text-right mono">
+                <p class="text-slate-500 text-xs uppercase tracking-wider">Sector: Earth Vicinity</p>
+                <p id="asteroid-count" class="text-cyan-400 text-xl font-bold">0 Objects Tracked</p>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <!-- Left Column: Radar -->
+            <div class="lg:col-span-7 flex flex-col items-center">
+                <div id="radar-container" class="w-full max-w-xl aspect-square relative rounded-full border-2 border-cyan-500/20 bg-cyan-950/5 transition-colors duration-1000">
+                    <svg id="radar-svg" class="absolute inset-0 w-full h-full p-4" viewBox="0 0 100 100">
+                        <!-- Grid Lines -->
+                        <circle cx="50" cy="50" r="10" fill="none" stroke="currentColor" class="radar-grid text-cyan-500/10" stroke-width="0.5"></circle>
+                        <circle cx="50" cy="50" r="20" fill="none" stroke="currentColor" class="radar-grid text-cyan-500/10" stroke-width="0.5"></circle>
+                        <circle cx="50" cy="50" r="30" fill="none" stroke="currentColor" class="radar-grid text-cyan-500/10" stroke-width="0.5"></circle>
+                        <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" class="radar-grid text-cyan-500/10" stroke-width="0.5"></circle>
+                        <line x1="50" y1="10" x2="50" y2="90" stroke="currentColor" class="radar-grid text-cyan-500/10" stroke-width="0.5"></line>
+                        <line x1="10" y1="50" x2="90" y2="50" stroke="currentColor" class="radar-grid text-cyan-500/10" stroke-width="0.5"></line>
+
+                        <!-- Earth (Center) -->
+                        <circle cx="50" cy="50" r="2.5" class="fill-blue-500 animate-pulse"></circle>
+                        
+                        <!-- Asteroids Group -->
+                        <g id="asteroid-points"></g>
+                    </svg>
+                    
+                    <!-- Scan Sweep -->
+                    <div id="radar-sweep" class="absolute top-1/2 left-1/2 w-1/2 h-px bg-gradient-to-r from-transparent to-cyan-500/40 radar-sweep-line pointer-events-none"></div>
+                </div>
+                
+                <div class="mt-8 flex gap-6 mono uppercase tracking-[0.2em] text-slate-500" style="font-size: 10px;">
+                    <div class="flex items-center gap-2 text-red-500"><span class="w-2 h-2 rounded-full bg-red-600"></span> Potential Threat</div>
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-slate-600"></span> Safe Object</div>
+                </div>
+            </div>
+
+            <!-- Right Column: Panel -->
+            <div class="lg:col-span-5 space-y-6">
+                <div id="status-card" class="p-6 rounded-3xl border border-slate-800 bg-slate-900/40 transition-all duration-700">
+                    <div class="flex items-start gap-4">
+                        <div id="status-icon-container" class="p-3 rounded-2xl bg-cyan-500/20 text-cyan-500">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-white">Security Status</h3>
+                            <p id="status-text" class="text-cyan-400 mono text-xs uppercase mt-1">Scan Complete: No Immediate Threats</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="info-panel-container">
+                    <div class="h-64 flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-white/5 rounded-3xl">
+                        <div class="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mb-4 text-slate-500">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                        </div>
+                        <p class="text-slate-500 text-sm">Select an object on the radar<br>to analyze telemetry data.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_KEY = 'DEMO_KEY';
+        let asteroids = [];
+        let selectedAsteroidId = null;
+
+        function startMission() {
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('loading-screen').classList.remove('hidden');
+            init();
+        }
+
+        async function init() {
+            try {
+                const now = new Date();
+                const today = now.toISOString().split('T')[0];
+                
+                let response = await fetch(`https://api.nasa.gov/neo/rest/v1/feed?start_date=${today}&end_date=${today}&api_key=${API_KEY}`);
+                if (!response.ok) throw new Error('NASA API Unavailable');
+                
+                let data = await response.json();
+                let dates = Object.keys(data.near_earth_objects || {});
+                let list = dates.length > 0 ? data.near_earth_objects[dates[0]] : [];
+
+                // Fallback to yesterday if today is empty
+                if (list.length === 0) {
+                    const yesterday = new Date(now.setDate(now.getDate() - 1)).toISOString().split('T')[0];
+                    response = await fetch(`https://api.nasa.gov/neo/rest/v1/feed?start_date=${yesterday}&end_date=${yesterday}&api_key=${API_KEY}`);
+                    data = await response.json();
+                    dates = Object.keys(data.near_earth_objects || {});
+                    list = dates.length > 0 ? data.near_earth_objects[dates[0]] : [];
+                }
+
+                asteroids = list;
+                renderUI();
+                document.getElementById('loading-screen').classList.add('hidden');
+            } catch (err) {
+                document.getElementById('loading-screen').classList.add('hidden');
+                document.getElementById('error-screen').classList.remove('hidden');
+                document.getElementById('error-message').textContent = err.message;
+            }
+        }
+
+        function renderUI() {
+            const container = document.getElementById('asteroid-points');
+            const countLabel = document.getElementById('asteroid-count');
+            const statusCard = document.getElementById('status-card');
+            const statusText = document.getElementById('status-text');
+            const statusIconCont = document.getElementById('status-icon-container');
+            const radarCont = document.getElementById('radar-container');
+            const sweep = document.getElementById('radar-sweep');
+            const grids = document.querySelectorAll('.radar-grid');
+
+            countLabel.textContent = `${asteroids.length} Objects Tracked`;
+            container.innerHTML = '';
+
+            const hasHazardous = asteroids.some(a => a.is_potentially_hazardous_asteroid);
+
+            if (hasHazardous) {
+                statusCard.classList.add('bg-red-950/20', 'border-red-500/30', 'glow-red');
+                statusText.textContent = 'WARNING: ENHANCED PROXIMITY ALERT';
+                statusText.classList.add('text-red-400', 'font-bold');
+                statusIconCont.classList.add('bg-red-500/20', 'text-red-500');
+                statusIconCont.classList.remove('text-cyan-500');
+                radarCont.classList.add('border-red-500/30', 'bg-red-950/5');
+                sweep.classList.add('to-red-500/40');
+                grids.forEach(g => g.classList.add('text-red-500/10'));
+            }
+
+            asteroids.forEach((asteroid, idx) => {
+                const seed = parseInt(asteroid.id.substring(0, 5)) || idx;
+                const angle = (idx / asteroids.length) * 2 * Math.PI;
+                const distance = 20 + (seed % 25);
+                const x = 50 + distance * Math.cos(angle);
+                const y = 50 + distance * Math.sin(angle);
+                
+                const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                g.setAttribute('class', 'cursor-pointer group');
+                g.onclick = () => selectAsteroid(asteroid.id);
+
+                if (asteroid.is_potentially_hazardous_asteroid) {
+                    const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                    ring.setAttribute('cx', x);
+                    ring.setAttribute('cy', y);
+                    ring.setAttribute('r', '3');
+                    ring.setAttribute('class', 'fill-none stroke-red-500/40');
+                    ring.setAttribute('stroke-width', '0.2');
+                    
+                    const animR = document.createElementNS("http://www.w3.org/2000/svg", "animate");
+                    animR.setAttribute('attributeName', 'r');
+                    animR.setAttribute('from', '2');
+                    animR.setAttribute('to', '6');
+                    animR.setAttribute('dur', '2s');
+                    animR.setAttribute('repeatCount', 'indefinite');
+                    
+                    const animO = document.createElementNS("http://www.w3.org/2000/svg", "animate");
+                    animO.setAttribute('attributeName', 'opacity');
+                    animO.setAttribute('from', '0.6');
+                    animO.setAttribute('to', '0');
+                    animO.setAttribute('dur', '2s');
+                    animO.setAttribute('repeatCount', 'indefinite');
+                    
+                    ring.appendChild(animR);
+                    ring.appendChild(animO);
+                    g.appendChild(ring);
+                }
+
+                const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                dot.setAttribute('cx', x);
+                dot.setAttribute('cy', y);
+                dot.setAttribute('r', '1.5');
+                dot.setAttribute('id', `dot-${asteroid.id}`);
+                dot.setAttribute('class', `transition-all duration-300 ${asteroid.is_potentially_hazardous_asteroid ? 'fill-red-600' : 'fill-slate-600 group-hover:fill-cyan-500'}`);
+                
+                g.appendChild(dot);
+                container.appendChild(g);
+            });
+        }
+
+        function selectAsteroid(id) {
+            const asteroid = asteroids.find(a => a.id === id);
+            if (!asteroid) return;
+
+            // Reset dots
+            asteroids.forEach(a => {
+                const d = document.getElementById(`dot-${a.id}`);
+                if (d) {
+                    d.setAttribute('r', '1.5');
+                    d.classList.remove('fill-cyan-400', 'fill-red-400', 'scale-125');
+                    if (a.is_potentially_hazardous_asteroid) d.classList.add('fill-red-600');
+                    else d.classList.add('fill-slate-600');
+                }
+            });
+
+            // Highlight selected
+            const dot = document.getElementById(`dot-${id}`);
+            dot.setAttribute('r', '2.5');
+            dot.classList.remove('fill-slate-600', 'fill-red-600');
+            dot.classList.add(asteroid.is_potentially_hazardous_asteroid ? 'fill-red-400' : 'fill-cyan-400');
+
+            const infoPanel = document.getElementById('info-panel-container');
+            const avgDiam = (asteroid.estimated_diameter.kilometers.estimated_diameter_min + asteroid.estimated_diameter.kilometers.estimated_diameter_max) / 2;
+            
+            let sizeContext = 'Size of a Small City';
+            if (avgDiam < 0.05) sizeContext = 'Size of a House';
+            else if (avgDiam < 0.2) sizeContext = 'Size of a Boeing 747';
+            else if (avgDiam < 0.5) sizeContext = 'Size of a Stadium';
+            else if (avgDiam < 1) sizeContext = 'Size of the Golden Gate Bridge';
+
+            const velocity = Math.round(parseFloat(asteroid.close_approach_data[0].relative_velocity.kilometers_per_hour)).toLocaleString();
+            const missDist = parseFloat(asteroid.close_approach_data[0].miss_distance.lunar).toFixed(1);
+
+            infoPanel.innerHTML = `
+                <div class="bg-white/[0.03] border border-white/10 rounded-3xl p-8 backdrop-blur-sm fade-in text-left">
+                    <div class="flex justify-between items-start mb-6">
+                        <div>
+                            <h2 class="text-3xl font-black text-white mb-1 uppercase tracking-tight">${asteroid.name.replace(/[()]/g, '')}</h2>
+                            <p class="text-cyan-500 mono text-xs uppercase tracking-widest">ID: ${asteroid.id}</p>
+                        </div>
+                        <button onclick="clearSelection()" class="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-500 hover:text-white">✕</button>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 mb-8">
+                        ${renderDetailCard('Velocity', `${velocity} km/h`, 'Target')}
+                        ${renderDetailCard('Miss Dist', `${missDist} Lunar`, 'Globe')}
+                        ${renderDetailCard('Scale', sizeContext, 'Info')}
+                        ${renderDetailCard('Threat', asteroid.is_potentially_hazardous_asteroid ? 'CRITICAL' : 'NOMINAL', 'Zap', asteroid.is_potentially_hazardous_asteroid)}
+                    </div>
+
+                    <a href="${asteroid.nasa_jpl_url}" target="_blank" class="block w-full text-center py-4 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-bold transition-all border border-white/5 uppercase tracking-widest text-xs">
+                        View JPL Data Sheet
+                    </a>
+                </div>
+            `;
+        }
+
+        function renderDetailCard(label, value, icon, highlight) {
+            const icons = {
+                Target: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+                Globe: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+                Info: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+                Zap: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'
+            };
+
+            return `
+                <div class="bg-black/40 border border-white/5 p-4 rounded-2xl">
+                    <div class="flex items-center gap-2 text-slate-500 mb-2">
+                        ${icons[icon]}
+                        <span class="mono uppercase font-bold tracking-wider" style="font-size: 8px;">${label}</span>
+                    </div>
+                    <p class="text-sm md:text-md font-bold tracking-tight ${highlight ? 'text-red-500' : 'text-slate-100'}">
+                        ${value}
+                    </p>
+                </div>
+            `;
+        }
+
+        function clearSelection() {
+            renderUI();
+            document.getElementById('info-panel-container').innerHTML = `
+                <div class="h-64 flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-white/5 rounded-3xl">
+                    <div class="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mb-4 text-slate-500">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                    </div>
+                    <p class="text-slate-500 text-sm">Select an object on the radar<br>to analyze telemetry data.</p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
